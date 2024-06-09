@@ -4,23 +4,30 @@ import wave
 import pyaudio
 import speech_recognition as sr
 from os import path
-import threading
+import io
+
+wav_buffer = io.BytesIO()
 
 
-def transcribe_audio(frames):
+def transcribe_audio():
     recognizer = sr.Recognizer()
-    source = sr.AudioData(b"".join(frames), 8000, 1)
+    audio_data = sr.AudioData(wav_buffer.read(), 8000, 1)
+
     try:
-        print("final result " + recognizer.recognize_whisper(source))
+        print(
+            "final result "
+            + recognizer.recognize_whisper(audio_data=audio_data, language="en")
+        )
     except sr.UnknownValueError:
         print("Whisper could not understand audio")
     except sr.RequestError as e:
         print(f"Could not request results from Whisper; {e}")
 
 
-def recorded_stt(filename, call, sample_rate=8000, channels=1, chunk_size=1024):
+def recorded_stt(call, sample_rate=8000, channels=1, chunk_size=1024):
     # Initialize pyaudio
     audio = pyaudio.PyAudio()
+    frames = []
 
     # Open stream
     stream = audio.open(
@@ -32,8 +39,6 @@ def recorded_stt(filename, call, sample_rate=8000, channels=1, chunk_size=1024):
     )
 
     print("\nRecording started")
-
-    frames = []
 
     try:
         while call.state == CallState.ANSWERED:
@@ -57,7 +62,13 @@ def recorded_stt(filename, call, sample_rate=8000, channels=1, chunk_size=1024):
     stream.close()
     audio.terminate()
 
-    transcribe_audio(frames=frames)
+    # Write the frames to the buffer using wave
+    with wave.open(wav_buffer, "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(1)
+        wf.setframerate(sample_rate)
+        wf.writeframes(b"".join(frames))
+    wav_buffer.seek(0)
 
 
 def answer(call):
@@ -74,8 +85,7 @@ def answer(call):
         # time.sleep(0.1)
 
         # Start recording audio in a separate thread or process
-        recorded_stt("recorded_call.wav", call)
-
+        recorded_stt(call)
         # call.hangup()
         # recording_thread.join()
     except InvalidStateError:
@@ -103,15 +113,4 @@ if __name__ == "__main__":
     phone.start()
     input("Press enter to disable the phone")
     phone.stop()
-
-    # AUDIO_FILE = path.join(path.dirname(path.realpath(__file__)), "recorded_call.wav")
-    # recognizer = sr.Recognizer()
-    # with sr.AudioFile(AUDIO_FILE) as source:
-    #     fin_audio = recognizer.record(source=source)
-
-    # try:
-    #     print("final result " + recognizer.recognize_whisper(fin_audio))
-    # except sr.UnknownValueError:
-    #     print("Whisper could not understand audio")
-    # except sr.RequestError as e:
-    #     print(f"Could not request results from Whisper; {e}")
+    transcribe_audio()
