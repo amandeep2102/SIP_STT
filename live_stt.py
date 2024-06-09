@@ -3,12 +3,32 @@ import time
 import wave
 import pyaudio
 import speech_recognition as sr
+import threading
+
+frames = []
+
+
+def live_transcribe():
+    print("\nstarted Transcribing")
+    while True:
+        audio_data = sr.AudioData(
+            frame_data=b"".join(frames), sample_rate=8000, sample_width=1
+        )
+        recognizer = sr.Recognizer()
+
+        try:
+            print("final result " + recognizer.recognize_whisper(audio_data=audio_data))
+        except sr.UnknownValueError:
+            print("Whisper could not understand audio")
+        except sr.RequestError as e:
+            print(f"Could not request results from Whisper; {e}")
+
+        time.sleep(1)
 
 
 def record_audio(filename, call, sample_rate=8000, channels=1, chunk_size=1024):
     # Initialize pyaudio
     audio = pyaudio.PyAudio()
-    recognizer = sr.Recognizer()
 
     # Open stream
     stream = audio.open(
@@ -21,24 +41,16 @@ def record_audio(filename, call, sample_rate=8000, channels=1, chunk_size=1024):
 
     print("\nRecording started")
 
-    frames = []
-
     try:
         while call.state == CallState.ANSWERED:
             data = stream.read(chunk_size)
             frames.append(data)
-            # call.read_audio()  # Read audio from call to keep the call alive
+            call.read_audio()  # Read audio from call to keep the call alive
             # speech = recognizer.listen(call.read_audio())
-            audiochunk = sr.AudioData(data, 8000, 1)
-
-            print(
-                "whisper thinks you said"
-                + recognizer.recognize_whisper(audio_data=audiochunk)
-            )
-
             # call.write_audio(data)  # Optionally transmit the same data back
             time.sleep(0.1)
             # print("\ndata written")
+            # thread2.start()
 
     except InvalidStateError:
         print("invalid state")
@@ -86,7 +98,7 @@ def answer(call):
         call.hangup()
 
 
-if __name__ == "__main__":
+def main():
     # sip_domain = "sip.ippi.com"
     # username = "Asdjkl"
     # password = "Aman@123"
@@ -101,6 +113,15 @@ if __name__ == "__main__":
         port=5060,
         callCallback=answer,
     )
+
     phone.start()
     input("Press enter to disable the phone")
     phone.stop()
+
+
+if __name__ == "__main__":
+    thread1 = threading.Thread(target=main)
+    thread2 = threading.Thread(target=live_transcribe)
+    thread1.start()
+    time.sleep(1)
+    thread2.start()
